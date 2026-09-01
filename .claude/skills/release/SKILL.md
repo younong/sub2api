@@ -29,7 +29,6 @@ allowed-tools:
 ## 已确认的线上连接与部署信息
 
 - SSH host：`106.15.186.104`
-- SSH host fingerprint（ED25519）：`SHA256:i2omWUt3mzxCqZVycW727fiNTt/mB4uirQuY+CPP/+s`，已通过独立可信来源核对，并与本机 `known_hosts` 一致。
 - SSH user：`root`
 - SSH identity file：`~/.ssh/hermes_apiyi_ed25519`
 - 实际部署目录：`/opt/sub2api`
