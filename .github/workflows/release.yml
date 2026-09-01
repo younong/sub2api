@@ -1,5 +1,7 @@
 name: Release
 
+# Force GitHub Actions to re-index this workflow.
+
 on:
   push:
     tags:
