@@ -249,17 +249,10 @@ def process(payload: dict[str, Any], environ: dict[str, str] | None = None) -> d
             "当前目录不是有效的 Git worktree；请进入本会话专属 worktree 后继续实现。",
         )
     paths = _repository_paths(cwd)
-    if paths is None or paths[1] == paths[2]:
-        try:
-            plan = workflow.read_plan(session_id, env)
-        except workflow.WorkflowError as exc:
-            return _result(f"自动提交 PR 已跳过：无法读取开发流程状态（{exc}）。")
-        if plan is None or plan.get("approved") is not True:
-            return {}
-        return _retry_or_result(
-            payload, cwd, session_id, env,
-            "计划已批准，但当前仍是 primary checkout；请调用 EnterWorktree 后继续实现。",
-        )
+    if paths is None:
+        return _result("自动提交 PR 已跳过：无法读取 Git worktree。")
+    if paths[1] == paths[2]:
+        return {}
     _worktree, git_dir, _common_dir = paths
     if not _owner_matches(git_dir, session_id):
         return _retry_or_result(
