@@ -163,8 +163,8 @@ output/
 !.claude/settings.json
 !.claude/skills/
 .claude/skills/*
-!.claude/skills/hermes-release/
-!.claude/skills/hermes-release/SKILL.md
+!.claude/skills/release/
+!.claude/skills/release/SKILL.md
 !.claude/skills/bounded-code-review/
 !.claude/skills/bounded-code-review/SKILL.md
 !.claude/skills/claude-api-lite/

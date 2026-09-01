@@ -196,19 +196,3 @@ ssh <user>@<host> 'journalctl -u sub2api --since "10 min ago" --no-pager -n 100'
 - 是否执行过服务器写操作（只读检查应明确为“未修改服务器”）。
 
 不得把路径示例当作检查结果，不得输出 `.env`、认证信息、完整敏感日志或模型响应。
-
-## 已验证服务器观测值（2026-09-01）
-
-以下是一次只读检查的观测记录，不代表永久配置；以后执行操作前仍需重新检查：
-
-- SSH 目标：`root@106.15.186.104`；本机已存在并匹配该目标的 known_hosts 记录，使用本机 SSH key，不在文档中保存私钥内容。
-- Docker Server：`26.1.3`；Docker Compose：`v2.27.0`。
-- 实际部署目录：`/opt/sub2api`；实际环境文件存在但未读取内容。
-- 实际 Compose 文件：`/opt/sub2api/docker-compose.yml`；`docker compose ... config --quiet` 通过。
-- 运行服务：`sub2api`、`sub2api-postgres`、`sub2api-redis` 均为 healthy；另有 `searxng` 容器运行。
-- 应用镜像：`ghcr.io/wei-shaw/sub2api:0.1.183`；检查到 digest，容器状态为 running/healthy。
-- 应用宿主端口：`127.0.0.1:8081`；访问 `http://127.0.0.1:8081/health` 成功。
-- 挂载检查显示应用、PostgreSQL 和 Redis 使用 `/opt/sub2api` 下的持久化目录（PostgreSQL 同时存在镜像声明的 volume）；该运行态按数据挂载表现为本地目录持久化，不应仅凭 Compose 文件名猜测变体。
-- `sub2api.service` 当前不是 active，因此本次运行不是 active 的 legacy systemd 服务。
-
-检查过程未执行 pull、up、stop、restart、数据库操作、模型调用或其他服务器写操作；未输出 `.env`、认证材料或日志原文。后续部署仍须针对当前镜像版本、digest、端口和挂载重新做只读预检查。
