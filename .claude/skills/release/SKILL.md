@@ -26,13 +26,27 @@ allowed-tools:
 - `deploy/install.sh`：Linux 二进制安装、升级、指定版本安装和回滚脚本。
 - `deploy/sub2api.service`：二进制部署使用的 systemd 单元。
 
-## 已确认的线上连接信息
+## 已确认的线上连接与部署信息
 
 - SSH host：`106.15.186.104`
 - SSH user：`root`
 - SSH identity file：`~/.ssh/hermes_apiyi_ed25519`
-- 部署目录、部署变体和 host fingerprint 尚未在本 Skill 中确认；执行 `status`、`deploy`、`release` 或 `rollback` 前必须分别核对，不能猜测。
+- 实际部署目录：`/opt/sub2api`
+- Compose 项目：`sub2api`；实际 Compose 文件：`/opt/sub2api/docker-compose.yml`
+- 实际部署变体：应用、PostgreSQL 和 Redis 使用宿主机本地目录 bind mount（`/opt/sub2api/data`、`/opt/sub2api/postgres_data`、`/opt/sub2api/redis_data`）；虽然远端文件名是 `docker-compose.yml`，运行时按 local-directory 数据存储处理，不得仅按文件名判断。
+- 应用宿主端口：`127.0.0.1:8081` → 容器 `8080`；健康端点：`http://127.0.0.1:8081/health`
+- systemd `sub2api` 在最近一次核验中为 inactive；线上应用由 Docker Compose 管理，不得在同一端口启动二进制服务。
+- Host fingerprint 不写入仓库；首次连接前必须通过独立可信来源核对 fingerprint，并确认本机 `known_hosts`。
 - 只能将 identity file 作为 SSH 的 `-i` 参数使用，不得读取、打印或提交私钥内容。
+
+### 最近一次线上只读核验（2026-09-01）
+
+- Docker Engine `26.1.3`、Docker Compose `v2.27.0`。
+- 应用镜像：`ghcr.io/wei-shaw/sub2api:0.1.183`；镜像 digest：`sha256:bf749809905f377658ae8c132a80c8e09f5ea162f1c36d5ddfe40459b108b5e9`。
+- 应用容器版本标签：`0.1.183`；构建 revision：`e8cb019fabf8b55199436229044cbf9aa7a82564`。
+- 应用、PostgreSQL、Redis 均为 running/healthy；Compose 配置校验通过；健康端点返回 `{"status":"ok"}`。
+- 最近的容器 healthcheck 连续成功且无输出；未读取或输出应用业务日志，避免暴露敏感内容。
+- 本次仅执行只读检查，未修改服务器。
 
 ### 发布链路
 
@@ -127,21 +141,21 @@ git ls-remote --tags origin 'refs/tags/<tag>'
 
 ### 远端只读预检查
 
-先通过独立可信渠道核对 fingerprint，再确认 host、用户和实际目录。下面的路径只是候选，不是项目事实：
+已确认目标为 `106.15.186.104` 上 `/opt/sub2api` 的 Docker Compose 项目，实际使用本地目录数据存储。首次连接前仍必须通过独立可信来源确认 fingerprint，并与本机 `known_hosts` 对比；以下命令均为单条只读 probe：
 
 ```bash
-ssh <user>@<host> 'docker version'
-ssh <user>@<host> 'docker compose version'
-ssh <user>@<host> 'test -d <deploy-dir>'
-ssh <user>@<host> 'test -f <deploy-dir>/.env'
-ssh <user>@<host> 'test -f <deploy-dir>/<compose-file>'
-ssh <user>@<host> 'cd <deploy-dir> && docker compose --env-file .env -f <compose-file> config --quiet'
-ssh <user>@<host> 'cd <deploy-dir> && docker compose --env-file .env -f <compose-file> ps'
-ssh <user>@<host> 'systemctl is-active sub2api || true'
-ssh <user>@<host> 'docker inspect sub2api --format "{{.Config.Image}} {{.Image}}" 2>/dev/null || true'
+ssh -i ~/.ssh/hermes_apiyi_ed25519 root@106.15.186.104 'docker version'
+ssh -i ~/.ssh/hermes_apiyi_ed25519 root@106.15.186.104 'docker compose version'
+ssh -i ~/.ssh/hermes_apiyi_ed25519 root@106.15.186.104 'test -d /opt/sub2api'
+ssh -i ~/.ssh/hermes_apiyi_ed25519 root@106.15.186.104 'test -f /opt/sub2api/.env'
+ssh -i ~/.ssh/hermes_apiyi_ed25519 root@106.15.186.104 'test -f /opt/sub2api/docker-compose.yml'
+ssh -i ~/.ssh/hermes_apiyi_ed25519 root@106.15.186.104 'docker compose --env-file /opt/sub2api/.env -f /opt/sub2api/docker-compose.yml config --quiet'
+ssh -i ~/.ssh/hermes_apiyi_ed25519 root@106.15.186.104 'docker compose --env-file /opt/sub2api/.env -f /opt/sub2api/docker-compose.yml ps'
+ssh -i ~/.ssh/hermes_apiyi_ed25519 root@106.15.186.104 'systemctl is-active sub2api'
+ssh -i ~/.ssh/hermes_apiyi_ed25519 root@106.15.186.104 'docker inspect sub2api --format "{{.Config.Image}} {{.Image}}"'
 ```
 
-根据远端实际文件选择 `local`、named volume 或 `standalone`，不得猜测。若 `sub2api.service` active，说明可能是二进制部署；不得在同一端口启动 Compose，也不得未经单独批准停用它。
+根据远端实际文件和 mount 选择 local-directory 数据存储；不要把 `/opt/sub2api/docker-compose.yml` 文件名误判为仓库的 named-volume 变体。若 `sub2api.service` active，说明可能是二进制部署；不得在同一端口启动 Compose，也不得未经单独批准停用它。
 
 ### Docker 升级
 
