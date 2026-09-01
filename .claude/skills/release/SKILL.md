@@ -1,6 +1,6 @@
 ---
 name: release
-description: 按仓库真实的 Git tag、GitHub Actions、GoReleaser 与 Docker/systemd 部署方式执行发布检查、发布、部署、回滚和线上状态验证。
+description: 按仓库真实的 Git tag、GitHub Actions、GoReleaser 与 Docker/systemd 部署方式执行发布检查、发布、部署、回滚和线上状态验证；用户要求发布、部署、打 tag、回滚或查看 sub2api 线上状态时使用。
 allowed-tools:
   - Read
   - Bash
