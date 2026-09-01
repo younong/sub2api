@@ -26,6 +26,14 @@ allowed-tools:
 - `deploy/install.sh`：Linux 二进制安装、升级、指定版本安装和回滚脚本。
 - `deploy/sub2api.service`：二进制部署使用的 systemd 单元。
 
+## 已确认的线上连接信息
+
+- SSH host：`106.15.186.104`
+- SSH user：`root`
+- SSH identity file：`~/.ssh/hermes_apiyi_ed25519`
+- 部署目录、部署变体和 host fingerprint 尚未在本 Skill 中确认；执行 `status`、`deploy`、`release` 或 `rollback` 前必须分别核对，不能猜测。
+- 只能将 identity file 作为 SSH 的 `-i` 参数使用，不得读取、打印或提交私钥内容。
+
 ### 发布链路
 
 1. 在已确认的发布分支上完成本地验证。
