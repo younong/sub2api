@@ -21,7 +21,6 @@ MAX_CANDIDATE_TEXT = 6_000
 OWNER_FILENAME = "claude-task-owner.json"
 OWNER_VERSION = 1
 FILE_TOOLS = {"Edit", "NotebookEdit", "Write"}
-CWD_GUARDED_TOOLS = {"Agent", "Bash", "Monitor", "PowerShell", "Workflow"}
 LIFECYCLE_EVENTS = {"CwdChanged", "PostCompact", "SessionStart"}
 
 
@@ -479,11 +478,6 @@ def guarded_location(payload: dict[str, Any], project_dir: Path) -> Path | None:
             except ValueError:
                 return None
             return nearest_existing_path(target)
-    if tool_name in CWD_GUARDED_TOOLS:
-        cwd = payload.get("cwd")
-        if isinstance(cwd, str) and cwd:
-            return resolve_path(cwd, project_dir)
-        return project_dir
     return None
 
 
