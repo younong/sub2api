@@ -120,7 +120,6 @@ tests
 !deploy/tests/
 !deploy/tests/**
 CLAUDE.md
-.claude
 scripts
 !backend/scripts/
 !backend/scripts/resolve-version.sh

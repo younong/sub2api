@@ -1,0 +1,172 @@
+{
+  "skillOverrides": {
+    "claude-api": "off",
+    "code-review": "off"
+  },
+    "permissions": {
+    "defaultMode": "bypassPermissions"
+  },
+  "env": {
+    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "2"
+  },
+  "worktree": {
+    "baseRef": "fresh"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": [
+              "-lc",
+              "printf 'export CODEX_HOME=%q\\n' \"$CLAUDE_PROJECT_DIR/.codex\" >> \"$CLAUDE_ENV_FILE\""
+            ],
+            "timeout": 5,
+            "statusMessage": "Configuring project-local Codex"
+          },
+          {
+            "type": "command",
+            "command": "bash",
+            "args": [
+              "-lc",
+              "exec \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-python-hook.sh\" .claude/hooks/require-development-worktree.py"
+            ],
+            "timeout": 5,
+            "statusMessage": "Restoring worktree task ownership"
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": [
+              "-lc",
+              "exec \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-python-hook.sh\" .claude/hooks/require-development-worktree.py"
+            ],
+            "timeout": 5,
+            "statusMessage": "Restoring worktree task ownership"
+          }
+        ]
+      }
+    ],
+    "CwdChanged": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": [
+              "-lc",
+              "exec \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-python-hook.sh\" .claude/hooks/require-development-worktree.py"
+            ],
+            "timeout": 5,
+            "statusMessage": "Checking worktree task ownership"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent|Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": [
+              "-lc",
+              "exec \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-python-hook.sh\" .claude/hooks/block-review-agents.py"
+            ],
+            "timeout": 5,
+            "statusMessage": "Enforcing bounded review policy"
+          }
+        ]
+      },
+      {
+        "matcher": "EnterWorktree|Write|Edit|NotebookEdit|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": [
+              "-lc",
+              "exec \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-python-hook.sh\" .claude/hooks/require-development-worktree.py"
+            ],
+            "timeout": 5,
+            "statusMessage": "Enforcing worktree task ownership"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "EnterWorktree",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": [
+              "-lc",
+              "exec \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-python-hook.sh\" .claude/hooks/require-development-worktree.py"
+            ],
+            "timeout": 5,
+            "statusMessage": "Registering worktree task ownership"
+          }
+        ]
+      },
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": [
+              "-lc",
+              "exec \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-python-hook.sh\" .claude/hooks/development-workflow.py"
+            ],
+            "timeout": 5,
+            "statusMessage": "Continuing approved development plan"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": [
+              "-lc",
+              "exec \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-python-hook.sh\" .claude/hooks/approve-exit-plan.py"
+            ],
+            "timeout": 5,
+            "statusMessage": "Approving development plan"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": [
+              "-lc",
+              "exec \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-python-hook.sh\" .claude/hooks/auto-submit-pr.py"
+            ],
+            "timeout": 120,
+            "statusMessage": "Submitting verified work as a GitHub PR"
+          }
+        ]
+      }
+    ]
+  }
+}
