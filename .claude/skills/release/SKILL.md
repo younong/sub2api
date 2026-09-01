@@ -1,225 +1,198 @@
 ---
 name: release
-description: 项目发布到阿里云服务器的标准流程；当用户要求发布、部署、打 tag、回滚、查看线上状态或操作 106.15.186.104 上的 sub2api 服务时使用。
+description: 按仓库真实的 Git tag、GitHub Actions、GoReleaser 与 Docker/systemd 部署方式执行发布检查、发布、部署、回滚和线上状态验证；用户要求发布、部署、打 tag、回滚或查看 sub2api 线上状态时使用。
 allowed-tools:
   - Read
   - Bash
 ---
 
-#  发布 Skill
+# Sub2API 发布与部署
 
-本 skill 用于把项目按 Git tag 发布到阿里云服务器。
+本 Skill 只依据仓库当前实现，不虚构额外的发布工具、服务器目录、systemd 单元或冒烟脚本。发布和服务器部署是两个阶段，必须分别确认。
 
-默认服务器：
+## 当前仓库的发布事实
 
-- Host: `106.15.186.104`
-- SSH user: `root`
-- SSH identity file: `~/.ssh/hermes_apiyi_ed25519`
-- Remote root: `/opt/hermes`
-- 发布工具：`npm run deploy -- ...`
-- 详细文档：`docs/deployment/alicloud.md`
-- Node.js 发布脚本：`deploy/deploy.mjs`
+执行发布前应读取这些文件；如果实现发生变化，以文件内容为准：
 
-## 核心规则
+- `.github/workflows/release.yml`：推送匹配 `v*` 的 Git tag 或手动 `workflow_dispatch` 后触发发布。
+- `.goreleaser.yaml`：普通发布的二进制、校验文件、容器镜像和多架构 manifest。
+- `.goreleaser.simple.yaml`：仅在明确选择 `simple_release` 时使用的 amd64-only GHCR 发布。
+- `frontend/package.json`：前端使用 pnpm，构建脚本为 `pnpm run build`。
+- `Makefile`：本地统一构建和测试入口。
+- `deploy/docker-deploy.sh`：首次 Docker 部署目录准备脚本，不是升级或回滚工具。
+- `deploy/docker-compose.local.yml`：生产推荐的本地目录数据存储 Compose 变体。
+- `deploy/docker-compose.yml`：Docker named volume 变体。
+- `deploy/docker-compose.standalone.yml`：PostgreSQL/Redis 在 Compose 外部时使用的变体。
+- `deploy/install.sh`：Linux 二进制安装、升级、指定版本安装和回滚脚本。
+- `deploy/sub2api.service`：二进制部署使用的 systemd 单元。
 
-1. **常规发布必须先合入 main，再按 tag 发布**
-   - 新版本发布：开发分支先通过 PR 合入 `main`，同步本地 `main` 后使用 `--create-tag <tag>`。
-   - `--create-tag` 要求具名 `main`、干净工作区，以及 `HEAD`、本地 `main` 与最新 `origin/main` 完全一致；工具不会 rebase 或 push `main`，只创建并 push 唯一目标 tag。
-   - 重试或回滚：仅使用 origin 上已经发布、且本地/远端指向同一 commit 的 `--tag <existing-tag>`。
-   - 不允许发布未打 tag 的工作区、分支名或 commit SHA；`--ref` 已删除。
-   - `scripts/release.py --publish` 不是阿里云部署入口，不得用它绕过这些规则。
+### 发布链路
 
-2. **不要把密码或 secret 写入仓库**
-   - 不要编辑代码、文档、配置去保存真实服务器密码。
-   - 优先建议 SSH key。
-   - 临时密码登录只能使用本机环境变量 `HERMES_DEPLOY_PASSWORD`，且不要打印其值。
+1. 在已确认的发布分支上完成本地验证。
+2. 创建并推送一个新的、不可变的 `vMAJOR.MINOR.PATCH`（可带合法预发布/构建后缀）tag。
+3. GitHub Actions 的 `release` workflow 构建前端和后端，并运行 GoReleaser。
+4. 普通发布产生多平台二进制、`checksums.txt`、GitHub Release、GHCR amd64/arm64 镜像和多架构 manifest。
+5. Docker Hub 只有在仓库配置对应 secrets 时才发布，不能由 GHCR 成功推断 Docker Hub 成功。
+6. `simple_release` 只产生 amd64 GHCR 镜像，不得报告为多架构发布。
 
-3. **真实部署前先检查连接并 dry-run**
-   - 在用户授权连接后先执行只读 `--check-connection`；它不得检查 Git、构建、上传或修改远端。
-   - 对发布命令再执行 `--dry-run`。
-   - 检查 tag、host、remote root 和所选 SSH transport 是否符合预期。
+发布镜像的版本使用不带 `v` 的 tag，例如 tag `v1.2.3` 对应：
 
-4. **真实部署是外部变更**
-   - 在执行非 dry-run 发布前，确认用户确实要发布到服务器。
-   - 如果用户已经明确说“现在发布/直接发布/执行部署”，可以继续。
-
-5. **两层冒烟是发布结果的一部分**
-   - 事务内确定性对话 smoke 在 Nginx/commit 前运行；失败必须报告 `rolled back before commit`。
-   - 远端 commit 后自动运行 authenticated 公开真实 AI smoke；失败必须报告 `deployment committed but public smoke failed`、返回非零，且不得自动回滚已提交版本。
-   - `--dry-run` 只确认两层 smoke 均为 `planned`，不得登录或调用模型。
-
-6. **不等待 GitHub 远程测试**
-   - 发布前不得查询、等待或要求 GitHub 分片测试、GitHub Actions、PR checks 或其他远程 CI 通过。
-   - 发布只由当前改动规定的本地验证、下方发布前检查和发布工具自身检查决定；这些本地与内置检查不得省略。
-
-7. **`--allow-non-main` 只允许逐命令审批的应急场景**
-   - 该参数仅用于用户明确认定的紧急事故，不属于常规发布授权。AI 不得因为当前分支不是 `main`、PR 尚未合入、时间紧迫，或用户此前批准过发布而自行使用。
-   - 每次准备执行任何包含 `--allow-non-main` 的命令前，必须单独列明当前分支、目标 tag、dry-run/真实执行模式和完整命令，向用户请示并收到该次明确批准。
-   - 一般性的“发布”“直接部署”“继续”和此前命令的批准均不能沿用；分支、tag、host、dry-run/真实模式或其他参数变化后必须重新请示。沉默或含糊回复视为未批准。
-   - dry-run 和真实部署分别请示。未获明确批准时停止，并要求先通过 PR 合入 `main`。
-   - 固定请示格式：`当前分支 <branch> 尚未通过常规流程合入 main。--allow-non-main 是应急旁路，会 rebase 最新 origin/main、用 exact lease 更新远端同名分支并创建 tag <tag>。是否明确批准我仅执行下面这一次命令？ <完整命令>`
-
-## 常用命令
-
-### 查看帮助
-
-```bash
-npm run deploy -- --help
+```text
+ghcr.io/<小写仓库 owner>/sub2api:1.2.3
 ```
 
-### 新建 tag 并发布
+GitHub Release/镜像发布完成后，服务器部署仍需单独执行和验证；推送 tag 不等于线上部署成功。
+
+## 操作类型与安全边界
+
+每次操作开始前明确说明：`release`、`release-retry`、`deploy`、`rollback` 或 `status`，并确认 tag、commit、GitHub 仓库、服务器 host/用户、部署目录和部署变体。
+
+1. 创建/推送 tag、手动触发 workflow、拉取私有镜像、修改服务器、停止服务、升级应用和回滚都需要本次明确批准。只读状态检查不包含这些操作。
+2. 不删除、移动、覆盖或强制更新已有 tag；不执行无保护的 `git push --force`。
+3. 新 tag 必须来自仓库实际默认分支的已同步 commit。先检查 `git symbolic-ref refs/remotes/origin/HEAD`，不要把 `main`、`master` 或某个 fork 写死。
+4. 新 tag 前必须确认工作区（含未跟踪文件）干净、`git diff --check` 通过、当前 commit 与本地/远程默认分支一致，并确认目标 tag 在本地和远端都不存在。
+5. 既有 tag 只能用于重试或回滚；先核对本地与远端 tag 都解析到同一个 commit，不能删除后重建。
+6. 不把 GitHub Actions、GitHub Release、GHCR、Docker Hub 和服务器部署混为一个成功状态；每一层分别报告。
+7. 不读取、打印、复制或提交服务器 `.env`、registry token、数据库密码、管理员密码、cookie、模型响应或其他认证材料。不要用 `.env.example` 覆盖实际 `.env`。
+8. 不执行 `docker compose down -v`、`docker volume rm`、`docker system prune`，不删除 `data/`、`postgres_data/`、`redis_data/`，不因应用升级自动重启 PostgreSQL/Redis。
+9. 首次 SSH 连接前必须通过独立可信渠道核对 host fingerprint，并确认本机 `known_hosts`；不能因为文档示例而信任 host、用户、私钥或远端目录。
+10. `deploy/docker-deploy.sh` 可能下载文件、生成 secrets 和覆盖部署准备文件，只能用于明确批准的首次部署；不能用于升级或回滚。
+
+## 发布命令的 worktree 边界
+
+发布预检、发布 tag、触发发布以及发布后的限定状态检查，必须从已同步的 primary checkout 执行，因为新 tag 只能来自实际默认分支。开发代码编辑、普通 shell 命令和最终 PR verification 仍必须在当前会话拥有的 linked worktree 中执行。
+
+开发工作流 hook 只放行本节和本 Skill 中的规范发布命令；它拒绝命令链、管道、重定向、命令替换、任意脚本、`git push --force` 以及 tag 删除/覆盖。远程状态检查要使用单条只读 probe，不能把 `&&`、`||` 或 `2>/dev/null` 拼进同一条命令。规范命令仍需遵守本节的明确批准和默认分支/tag 不可变约束；通过 hook 不等于发布已成功。
+
+## 本地发布前检查
+
+不自动安装或升级工具；缺少依赖时报告名称和版本。按仓库当前实现执行：
 
 ```bash
-npm run deploy -- --create-tag v2026.7.3 --dry-run
-npm run deploy -- --create-tag v2026.7.3
-```
-
-### 发布已有 tag
-
-```bash
-npm run deploy -- --tag v2026.7.3 --dry-run
-npm run deploy -- --tag v2026.7.3
-```
-
-### 回滚
-
-回滚就是发布上一个稳定 tag：
-
-```bash
-npm run deploy -- --tag <previous-tag> --dry-run
-npm run deploy -- --tag <previous-tag>
-```
-
-### 只读连接检查
-
-首次连接前必须让用户通过独立可信渠道核对 host fingerprint，并写入本机 OpenSSH `known_hosts`。获得连接授权后执行：
-
-```bash
-npm run deploy -- --check-connection
-```
-
-发布发起端可以是原生 Windows、macOS 或 Linux；远端仍必须是 Linux/systemd。
-
-### 使用 SSH key
-
-Key 模式使用系统 OpenSSH。默认使用本机私钥文件 `~/.ssh/hermes_apiyi_ed25519`（只记录文件路径，不记录私钥内容），也可使用 OpenSSH agent：
-
-```bash
-npm run deploy -- --tag v2026.7.3 --identity-file ~/.ssh/hermes_apiyi_ed25519 --dry-run
-```
-
-### 临时密码登录
-
-密码模式使用内置 SSH/SFTP transport，不需要 `sshpass`。不要输出密码值；只提示用户在本会话中设置环境变量并在操作后清除。
-
-Bash：
-
-```bash
-export HERMES_DEPLOY_PASSWORD='***'
-npm run deploy -- --check-connection
-npm run deploy -- --tag v2026.7.3 --dry-run
-unset HERMES_DEPLOY_PASSWORD
-```
-
-PowerShell：
-
-```powershell
-$env:HERMES_DEPLOY_PASSWORD = '***'
-npm run deploy -- --check-connection
-npm run deploy -- --tag v2026.7.3 --dry-run
-Remove-Item Env:HERMES_DEPLOY_PASSWORD
-```
-
-## APIYI 图像模型发布检查
-
-如果本次发布涉及 APIYI 图像模型：
-
-- 确认代码/文档/日志中没有真实 `APIYI_API_KEY`。
-- 只在服务器本地 `/opt/hermes/shared/.env` 配置：
-
-```bash
-APIYI_API_KEY=***
-```
-
-- 可选 endpoint 覆盖：
-
-```bash
-APIYI_OPENAI_BASE_URL=https://api.apiyi.com/v1
-APIYI_GEMINI_BASE_URL=https://api.apiyi.com/v1beta
-```
-
-- 发布后如需真实调用模型，再额外验证 `gpt-image-2-medium` 和 `nano-banana-2`。这不是默认发布成功判定；默认收尾只检查 systemd 服务状态：
-
-```bash
-ssh root@106.15.186.104 'set -a; [ ! -f /opt/hermes/shared/.env ] || . /opt/hermes/shared/.env; set +a; cd /opt/hermes/current && /opt/hermes/shared/venv/bin/python deploy/smoke-apiyi.py'
-```
-
-## 发布前检查
-
-运行或确认：
-
-```bash
-git status --short
+git status --short --untracked-files=all
 git branch --show-current
-git fetch --no-tags origin main
+git symbolic-ref --short refs/remotes/origin/HEAD
+git fetch --no-tags origin <default-branch>
 git rev-parse HEAD
-git rev-parse origin/main
-git tag --list | tail -n 20
-node --check deploy/deploy.mjs
-npm run deploy -- --help
+git rev-parse <default-branch>
+git rev-parse origin/<default-branch>
+git diff --check
+make test
 ```
 
-注意：常规创建新 tag 时，当前分支必须是 `main`、工作区（含未跟踪文件）必须干净，且 `HEAD` 必须与最新 `origin/main` 完全一致。落后、领先或分叉都停止；不得让发布脚本替用户 rebase/push main，也不得把 `--allow-non-main` 当作快捷修复。只有用户明确提出应急并按上面的逐命令规则批准后，才能使用该参数；应急路径仍会 rebase `origin/main`，且 detached HEAD 或远端并发变化会使发布停止。
+如果只验证发布构建，可补充 `make build`；不要用不存在的项目入口替代仓库已有的 Makefile、pnpm、GoReleaser 和 workflow。
 
-## 自动两层冒烟
+## 新 tag 发布
 
-发布命令自动执行：
+获得本次明确批准后：
 
-1. 远端 deterministic smoke：以非 root `hermes`、`env -i` 和隔离临时目录运行 loopback 假模型核心对话，覆盖 attachment、terminal、approval deny、stream、persistence/cold resume/continuation/delete。它不读取 `/opt/hermes/shared/.env`，也不允许非 loopback 网络。失败仍在 deployment commit 前，现有 trap 自动恢复旧版本。
-2. 本机 public smoke：远端 commit 后用 `scripts/smoke_dashboard_conversation.py` 登录公开 Dashboard，申请单次 WebSocket ticket，经 prefixed `/api/ws` 和 Owner Worker 调用真实模型，再 cold resume 并删除 session。
-
-第二层要求本机 `playwright-cli` 和仓库根目录 Git 忽略、`0600` 的 `.env.local`，其中配置 `HERMES_DASHBOARD_BROWSER_USERNAME`、`HERMES_DASHBOARD_BROWSER_PASSWORD`。绝不读取、打印、手工复制、`source` 或提交该文件；不要让凭据、cookie、ticket 或模型回复进入命令参数和总结。
-
-始终读取最终 aggregate summary 和两个 runner 的脱敏 JSON。若 public smoke 失败，线上部署已经 committed；先查 auth/WebSocket/Owner Worker/model 日志，人工决定修复重试或发布上一稳定 tag，禁止脚本自动回滚。
-
-## 发布后验证
+1. 使用仓库实际默认分支的 commit，检查目标 tag 本地和远端均不存在。
+2. 创建 annotated tag，消息包含版本和简短 release notes：
 
 ```bash
-ssh root@106.15.186.104 'readlink /opt/hermes/current'
-ssh root@106.15.186.104 'systemctl is-active hermes-dashboard && ! systemctl is-active --quiet hermes-gateway'
-ssh root@106.15.186.104 'systemctl status --no-pager hermes-dashboard'
-ssh root@106.15.186.104 'journalctl -u hermes-dashboard --since "10 min ago" --no-pager -n 200'
+git tag -a <tag> -m '<tag>' -m '<release notes>'
 ```
 
-Dashboard 默认只监听服务器本机 `127.0.0.1`。访问方式：
+3. 只推送精确 tag ref：
 
 ```bash
-ssh -L 9119:localhost:9119 root@106.15.186.104
+git push origin 'refs/tags/<tag>'
 ```
 
-然后打开 `http://localhost:9119`。
+4. 记录 tag、commit、workflow URL 和 GitHub Release URL。只有 workflow 成功、GitHub Release 存在、所需 GHCR 镜像和架构均核实后，才能报告“发布产物成功”。
 
-## 失败处理
+不要在本机用 GoReleaser 代替 GitHub Actions，也不要仅依据 tag push 成功报告发布成功。
 
-- tag 创建失败：检查 tag 是否已存在（本地或远端）、工作区是否干净。
-- rebase 失败：工具会尝试 abort 并停止；人工检查与最新 `origin/main` 的冲突，解决并提交后重试。
-- branch/tag push 失败：检查 Git remote 权限及远端并发更新；精确 lease 失效时 fetch、检查并重新 rebase/retry。除该发布路径的完整 ref + observed SHA lease 外，仍禁止无守卫的 `--force`、裸/隐式 lease 和 `+` refspec；Atomic push 不会降级为无守卫的 tag-only push。
-- tag 已验证发布但部署中止：检查远端 refs；明确要部署该不可变 commit 时再使用 `--tag <tag>` 重试，不要覆盖或删除远端 tag。
-- SSH 失败：检查 SSH key、密码、端口、安全组。
-- Python 依赖/bootstrap 失败：查看部署输出中的 `uv`/系统依赖错误，按服务器缺失依赖补齐。
-- systemd 服务启动失败：查看 `systemctl status --no-pager hermes-dashboard` 和 `journalctl -u hermes-dashboard --since "10 min ago" --no-pager -n 200`。
-- `rolled back before commit`：查看 deterministic smoke 的稳定 failure `code/check`；旧版本应已恢复，不要声称新版本发布成功。
-- `deployment committed but public smoke failed`：命令非零但新版本已在线；不要声称全部成功，也不要自动回滚。检查公开 auth/ticket/WebSocket/Owner Worker/model 后人工决策。
-- 发布错版本：用 `npm run deploy -- --tag <previous-tag>` 回滚。
+## 既有 tag 重试
 
-## 输出要求
+先获取并核对远端 tag：
 
-完成后向用户说明：
+```bash
+git fetch --tags origin
+git rev-parse <tag>^{commit}
+git ls-remote --tags origin 'refs/tags/<tag>'
+```
 
-- 发布/部署的 tag。
-- 是否真实部署，还是 dry-run。
-- 服务器路径 `/opt/hermes/releases/<tag>` 和 `/opt/hermes/current`。
-- deterministic smoke 和 public smoke 的各自状态、稳定 failure `code/check`（如有）及 cleanup 结果；不得包含 assistant 内容或认证材料。
-- aggregate outcome 必须原样归类为 `rolled back before commit`、`deployment committed and all smoke passed` 或 `deployment committed but public smoke failed`；dry-run 标记两层均为 `planned`。
-- 验证命令结果。
-- 如果失败，说明失败在哪一步，不要声称发布成功；public smoke 失败时同时明确部署已经 committed 且未自动回滚。
+确认远端 tag 与目标 commit 一致后，得到本次明确批准，再手动触发 `release.yml`。不要删除或重建 tag。除非用户明确要求等待，否则不轮询 GitHub Actions；触发动作和结果必须分开报告。
+
+## Docker Compose 部署
+
+### 远端只读预检查
+
+先通过独立可信渠道核对 fingerprint，再确认 host、用户和实际目录。下面的路径只是候选，不是项目事实：
+
+```bash
+ssh <user>@<host> 'docker version'
+ssh <user>@<host> 'docker compose version'
+ssh <user>@<host> 'test -d <deploy-dir>'
+ssh <user>@<host> 'test -f <deploy-dir>/.env'
+ssh <user>@<host> 'test -f <deploy-dir>/<compose-file>'
+ssh <user>@<host> 'cd <deploy-dir> && docker compose --env-file .env -f <compose-file> config --quiet'
+ssh <user>@<host> 'cd <deploy-dir> && docker compose --env-file .env -f <compose-file> ps'
+ssh <user>@<host> 'systemctl is-active sub2api || true'
+ssh <user>@<host> 'docker inspect sub2api --format "{{.Config.Image}} {{.Image}}" 2>/dev/null || true'
+```
+
+根据远端实际文件选择 `local`、named volume 或 `standalone`，不得猜测。若 `sub2api.service` active，说明可能是二进制部署；不得在同一端口启动 Compose，也不得未经单独批准停用它。
+
+### Docker 升级
+
+服务器实际部署目录中维护一个受限权限的 override，将应用镜像固定为已核实的版本或 digest；不要修改仓库 Compose 文件，也不要使用 `latest` 作为受控发布版本证明。
+
+升级前：
+
+1. 核对对应版本 GHCR 镜像和架构；私有镜像登录使用 `--password-stdin`，token 不得出现在参数或日志中。
+2. 记录现有应用镜像和 digest，不输出 `.env`。
+3. 对 Compose 内置 PostgreSQL 做非空、受限权限的备份；standalone 部署使用其已批准的外部数据库备份机制。
+4. 生成并校验新的 override，再拉取应用镜像；成功后原子替换正式 override，并保留旧版本以便回滚。
+5. 只重建应用服务，例如 `docker compose ... up -d --no-deps --force-recreate sub2api`，不重启数据库/Redis。
+
+升级后必须检查：
+
+- Compose 中应用服务为运行状态且使用请求的版本/digest；
+- 容器 health 状态为 `healthy`；
+- PostgreSQL/Redis（适用时）可用；
+- 根据实际宿主端口访问 `/health`；
+- 最近应用日志没有致命启动或迁移错误。
+
+应用迁移是 forward-only；镜像回滚不会自动撤销 schema/data 变化。数据库恢复是独立的破坏性操作，必须单独批准，不能因应用 unhealthy 自动执行。
+
+## 二进制 systemd 部署
+
+项目现有二进制安装目录和服务事实来自 `deploy/install.sh`、`deploy/sub2api.service`：
+
+- 默认二进制目录：`/opt/sub2api`；
+- 服务名：`sub2api`；
+- 服务工作目录：`/opt/sub2api`；
+- 配置目录：`/etc/sub2api`；
+- 服务入口：`/opt/sub2api/sub2api`。
+
+只读检查：
+
+```bash
+ssh <user>@<host> 'systemctl is-active sub2api || true'
+ssh <user>@<host> 'systemctl status --no-pager sub2api'
+ssh <user>@<host> 'test -x /opt/sub2api/sub2api'
+ssh <user>@<host> '/opt/sub2api/sub2api --version 2>/dev/null || true'
+ssh <user>@<host> 'journalctl -u sub2api --since "10 min ago" --no-pager -n 100'
+```
+
+升级/指定版本安装使用仓库已有的 `deploy/install.sh` 参数约定：`upgrade`、`upgrade -v <version>`、`rollback <version>`。它会停止服务、保存旧二进制备份、从 GitHub Release 下载并尝试启动新版本；每次都需先备份并在升级后检查 service 状态、版本、端口和日志。回滚不会自动回退数据库迁移。
+
+## 回滚
+
+- Docker：使用已核实的上一稳定版本或 digest，保留失败版本和旧 override；按升级前备份、override 校验、只重建应用和全套健康检查流程执行。
+- systemd：使用 `deploy/install.sh rollback <version>` 或等价的 `install -v <version>`，前提是目标 GitHub Release 存在且版本已核实。
+- 不删除失败 tag、失败镜像或备份；不自动恢复数据库。
+
+## 服务器状态检查与报告
+
+用户只要求状态时，只执行匹配实际部署变体的只读命令。报告必须包含：
+
+- host、用户、实际部署目录和 Compose 变体（或 systemd 服务名）；
+- 当前应用 image/digest 或二进制版本；
+- 应用、PostgreSQL、Redis 状态（适用时）；
+- health endpoint、最近有限日志的结论；
+- 是否执行过服务器写操作（只读检查应明确为“未修改服务器”）。
+
+不得把路径示例当作检查结果，不得输出 `.env`、认证信息、完整敏感日志或模型响应。
