@@ -21,7 +21,6 @@ MAX_CANDIDATE_TEXT = 6_000
 OWNER_FILENAME = "claude-task-owner.json"
 OWNER_VERSION = 1
 FILE_TOOLS = {"Edit", "NotebookEdit", "Write"}
-CWD_GUARDED_TOOLS = {"Agent", "Bash", "Monitor", "PowerShell", "Workflow"}
 LIFECYCLE_EVENTS = {"CwdChanged", "PostCompact", "SessionStart"}
 
 
@@ -470,20 +469,17 @@ def resolve_path(value: str, base: Path) -> Path:
 def guarded_location(payload: dict[str, Any], project_dir: Path) -> Path | None:
     tool_name = payload.get("tool_name")
     tool_input = payload.get("tool_input")
-    if tool_name in FILE_TOOLS and isinstance(tool_input, dict):
-        target_value = tool_input.get("file_path") or tool_input.get("notebook_path")
-        if isinstance(target_value, str) and target_value:
-            target = resolve_path(target_value, project_dir)
-            try:
-                target.relative_to(project_dir)
-            except ValueError:
-                return None
-            return nearest_existing_path(target)
-    if tool_name in CWD_GUARDED_TOOLS:
-        cwd = payload.get("cwd")
-        if isinstance(cwd, str) and cwd:
-            return resolve_path(cwd, project_dir)
-        return project_dir
+    if tool_name not in FILE_TOOLS or not isinstance(tool_input, dict):
+        return None
+
+    target_value = tool_input.get("file_path") or tool_input.get("notebook_path")
+    if isinstance(target_value, str) and target_value:
+        target = resolve_path(target_value, project_dir)
+        try:
+            target.relative_to(project_dir)
+        except ValueError:
+            return None
+        return nearest_existing_path(target)
     return None
 
 
