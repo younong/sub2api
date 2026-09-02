@@ -22,6 +22,10 @@ ARG NPM_CONFIG_REGISTRY=
 # it on the native host arch instead of under QEMU emulation for the target.
 FROM --platform=${BUILDPLATFORM} ${NODE_IMAGE} AS frontend-builder
 ARG NPM_CONFIG_REGISTRY
+# 部署子路径（如 '/pipegate/'），默认 '/'（根路径）。
+# 需与反向代理的子路径入口保持一致，代理剥离前缀后转发给后端。
+ARG VITE_BASE_PATH=
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
 WORKDIR /app/frontend
 

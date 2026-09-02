@@ -2,6 +2,8 @@
 
 interface ImportMetaEnv {
   readonly VITE_API_BASE_URL: string
+  /** 部署子路径（如 '/pipegate/'），对应 vite.config.ts 的 base */
+  readonly VITE_BASE_PATH: string
   readonly BASE_URL: string
 }
 

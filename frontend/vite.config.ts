@@ -3,6 +3,16 @@ import vue from '@vitejs/plugin-vue'
 import checker from 'vite-plugin-checker'
 import { resolve } from 'path'
 
+/**
+ * 规范化 Vite base 路径：保证以 '/' 开头和结尾（'/' 表示根路径部署）。
+ */
+function normalizeViteBase(value: string | undefined): string {
+  const raw = (value || '/').trim()
+  if (raw === '' || raw === '/') return '/'
+  const withLeading = raw.startsWith('/') ? raw : `/${raw}`
+  return withLeading.endsWith('/') ? withLeading : `${withLeading}/`
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({
     '&': '&amp;',
@@ -82,8 +92,12 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const backendUrl = env.VITE_DEV_PROXY_TARGET || 'http://localhost:8080'
   const devPort = Number(env.VITE_DEV_PORT || 3000)
+  // 部署子路径（如 '/pipegate/'）：构建产物中的所有资源、路由、API 地址
+  // 都会带上该前缀，配合反向代理按前缀路由并剥离前缀转发给后端。
+  const basePath = normalizeViteBase(env.VITE_BASE_PATH)
 
   return {
+    base: basePath,
     plugins: [
       vue(),
       checker({
