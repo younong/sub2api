@@ -8823,6 +8823,7 @@ import {
 import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
+import { APP_BASE_PATH } from "@/api/url";
 import { useAppStore } from "@/stores";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
 import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
@@ -10438,7 +10439,7 @@ const addQuotaNotifyEmail = () => {
 };
 
 const currentOrigin =
-  typeof window !== "undefined" ? window.location.origin : "";
+  (typeof window !== "undefined" ? window.location.origin : "") + APP_BASE_PATH;
 
 function buildApiCallbackUrl(path: string): string {
   const base = (form.api_base_url || currentOrigin).replace(/\/+$/, "");

@@ -1,6 +1,8 @@
 export const ADMIN_UI_REQUEST_HEADER = 'X-Admin-UI-Request'
 export const USER_UI_REQUEST_HEADER = 'X-User-UI-Request'
 
+import { stripAppBasePath } from './url'
+
 function isAdminPath(path: string): boolean {
   return (
     path === '/admin' ||
@@ -15,9 +17,10 @@ function requestPath(rawURL: string): string {
   if (!value) return ''
   try {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
-    return new URL(value, origin).pathname
+    // 子路径部署时（如 /pipegate/），先剥掉 base 前缀再与后端路由比较
+    return stripAppBasePath(new URL(value, origin).pathname)
   } catch {
-    return value.split(/[?#]/, 1)[0]
+    return stripAppBasePath(value.split(/[?#]/, 1)[0])
   }
 }
 
@@ -70,7 +73,7 @@ export function isUserTimingAPIPath(requestURL: string): boolean {
 export function shouldMarkAdminUIRequest(requestURL: string, pagePath?: string): boolean {
   const currentPath =
     pagePath ?? (typeof window !== 'undefined' ? window.location.pathname : '')
-  return isAdminPath(requestPath(requestURL)) || isAdminPath(currentPath)
+  return isAdminPath(requestPath(requestURL)) || isAdminPath(stripAppBasePath(currentPath))
 }
 
 export function shouldMarkUserUIRequest(requestURL: string): boolean {
