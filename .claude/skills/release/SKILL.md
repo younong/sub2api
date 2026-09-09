@@ -22,19 +22,40 @@ allowed-tools:
 - `deploy/install.sh` 与应用 update/rollback service：依赖 full GitHub Release 的 archives 和 checksum；server-only 与该更新路径不兼容。
 - `deploy/apple-container.sh`：依赖 full 的 Linux arm64 镜像。
 
+### 生产部署 tag 规范
+
+当前 Docker Compose 生产环境的新部署 tag 默认使用 annotated `vMAJOR.MINOR.PATCH-N`，例如 `v0.1.188-1`、`v0.1.188-2`：
+
+- `N` 必须是不带前导零的正整数；同一 `MAJOR.MINOR.PATCH` 下按远端现有 tag 和 Release 单调递增，不猜测、复用、删除或覆盖旧 tag。
+- 生产部署不得使用包含 `test` 或 `rc` 的 tag；只有用户当次明确要求测试/候选发布时才允许例外。
+- 创建 tag 前必须确认其目标是远程默认分支当前 HEAD，并确认本地、远端和 GitHub Release 均不存在同名版本。
+- `vMAJOR.MINOR.PATCH-N` 在 SemVer 中仍是 prerelease：GitHub Release 必须标记为 prerelease，不更新 GHCR `latest`，也不触发默认分支 VERSION 同步。
+- 用户未指定生产 tag 时，先根据远端已有版本提出下一个 `-N` 候选并取得确认，不能自行改用稳定 tag 或 `test` tag。
+
 ### Server-only 默认发布
 
 推送一个新的 annotated `vMAJOR.MINOR.PATCH[-PRERELEASE]` tag 后固定执行 server-only：
 
 - 只构建 `linux/amd64`；
 - 发布 `ghcr.io/<小写 owner>/sub2api:<version>-amd64` 和 `:<version>`；
-- 稳定版额外更新 `:latest`，test/rc prerelease 不得更新 `latest`；
+- 稳定版额外更新 `:latest`；任何带 `-...` 后缀的 prerelease（包括 `-N`、`-test.N`、`-rc.N`）不得更新 `latest`；
 - 创建 GitHub Release；prerelease 自动标记为 prerelease；
 - Release 页面没有二进制、archive 或 checksum assets；
 - 不执行 QEMU、arm64、多架构 manifest、Docker Hub、Telegram；
 - 成功的稳定版同步默认分支 `backend/cmd/server/VERSION`，prerelease 不同步。
 
 Server-only 是当前 Linux amd64 Docker Compose 服务器的默认产物。不得将它报告为多架构、二进制或 Docker Hub 发布。
+
+### 生产部署构建约束
+
+当前 `/opt/sub2api` Docker Compose 生产环境只允许部署普通 annotated `v*` tag push 产生的 server-only 镜像：
+
+- 构建目标必须且只能是 `linux/amd64`，并包含真实构建后嵌入 Go 服务的 Web UI；不得用跳过前端构建的镜像。
+- 不得为该生产部署使用 `workflow_dispatch` full、QEMU、Linux arm64、多架构 manifest、Docker Hub 或本地手工构建产物。
+- 发布 run 必须显示 `Run server-only GoReleaser` 成功，且 full、QEMU、Docker Hub 等步骤跳过；不能只凭 tag 名或工作流整体状态推断产物类型。
+- 部署前必须核验 GHCR 镜像只有 `linux/amd64`，OCI version 等于 tag 去掉 `v` 后的版本，revision 等于 tag commit，并记录远端 digest。
+- 生产 override 必须固定为已核验的 `ghcr.io/<owner>/sub2api@sha256:<digest>`；不得部署 `latest`、可变版本 tag、未完成的 Actions 产物或未经核验的本地镜像。
+- 部署时只重建 `sub2api` 应用服务；不得因应用发布重建或重启 PostgreSQL、Redis，也不得切换到 binary/systemd 部署方式。
 
 ### 手动 full 发布
 
