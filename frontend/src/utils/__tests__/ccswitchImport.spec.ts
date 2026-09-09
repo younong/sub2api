@@ -27,7 +27,7 @@ describe('ccswitchImport utils', () => {
     usageScript: 'return true'
   }
 
-  it('adds the Codex model parameter for OpenAI imports', () => {
+  it('adds the Codex model and provider config for OpenAI imports', () => {
     const params = paramsFromDeeplink(
       buildCcSwitchImportDeeplink({
         ...baseInput,
@@ -40,6 +40,18 @@ describe('ccswitchImport utils', () => {
     expect(params.get('app')).toBe('codex')
     expect(params.get('endpoint')).toBe(baseInput.baseUrl)
     expect(params.get('model')).toBe(OPENAI_CC_SWITCH_CODEX_MODEL)
+    expect(params.get('configFormat')).toBe('toml')
+    expect(atob(params.get('config') || '')).toBe(`model_provider = "custom"
+
+[model_providers.custom]
+name = "OpenAI"
+base_url = "https://api.example.com"
+wire_api = "responses"
+requires_openai_auth = false
+experimental_bearer_token = "sk-test"
+
+[model_providers.custom.http_headers]
+x-openai-actor-authorization = "sub2api"`)
     expect(atob(params.get('usageScript') || '')).toBe(baseInput.usageScript)
   })
 
@@ -78,6 +90,8 @@ describe('ccswitchImport utils', () => {
     expect(params.get('app')).toBe(app)
     expect(params.get('endpoint')).toBe(baseInput.baseUrl)
     expect(params.has('model')).toBe(false)
+    expect(params.has('config')).toBe(false)
+    expect(params.get('configFormat')).toBe('json')
   })
 
   it('keeps Antigravity imports on the selected client endpoint without a model parameter', () => {

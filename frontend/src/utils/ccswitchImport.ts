@@ -69,12 +69,32 @@ export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput):
     ['name', input.providerName],
     ['homepage', input.baseUrl],
     ['endpoint', config.endpoint],
-    ['apiKey', input.apiKey],
-    ['configFormat', 'json'],
+    ['apiKey', input.apiKey]
+  ]
+
+  if (config.app === 'codex') {
+    const codexConfig = `model_provider = "custom"
+
+[model_providers.custom]
+name = "OpenAI"
+base_url = ${JSON.stringify(config.endpoint)}
+wire_api = "responses"
+requires_openai_auth = false
+experimental_bearer_token = ${JSON.stringify(input.apiKey)}
+
+[model_providers.custom.http_headers]
+x-openai-actor-authorization = "sub2api"`
+
+    entries.push(['config', btoa(codexConfig)], ['configFormat', 'toml'])
+  } else {
+    entries.push(['configFormat', 'json'])
+  }
+
+  entries.push(
     ['usageEnabled', 'true'],
     ['usageScript', btoa(input.usageScript)],
     ['usageAutoInterval', '30']
-  ]
+  )
 
   if (config.model) {
     entries.splice(2, 0, ['model', config.model])
