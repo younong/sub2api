@@ -85,7 +85,12 @@ experimental_bearer_token = ${JSON.stringify(input.apiKey)}
 [model_providers.custom.http_headers]
 x-openai-actor-authorization = "sub2api"`
 
-    entries.push(['config', btoa(codexConfig)], ['configFormat', 'toml'])
+    const codexPayload = JSON.stringify({
+      auth: { OPENAI_API_KEY: input.apiKey },
+      config: codexConfig
+    })
+
+    entries.push(['config', btoa(codexPayload)], ['configFormat', 'json'])
   } else {
     entries.push(['configFormat', 'json'])
   }
