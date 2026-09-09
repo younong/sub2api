@@ -40,8 +40,10 @@ describe('ccswitchImport utils', () => {
     expect(params.get('app')).toBe('codex')
     expect(params.get('endpoint')).toBe(baseInput.baseUrl)
     expect(params.get('model')).toBe(OPENAI_CC_SWITCH_CODEX_MODEL)
-    expect(params.get('configFormat')).toBe('toml')
-    expect(atob(params.get('config') || '')).toBe(`model_provider = "custom"
+    expect(params.get('configFormat')).toBe('json')
+    const codexPayload = JSON.parse(atob(params.get('config') || ''))
+    expect(codexPayload.auth).toEqual({ OPENAI_API_KEY: 'sk-test' })
+    expect(codexPayload.config).toBe(`model_provider = "custom"
 
 [model_providers.custom]
 name = "OpenAI"

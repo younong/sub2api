@@ -42,6 +42,7 @@ const messages: Record<string, string> = {
   'keys.created': 'Created',
   'keys.expiresAt': 'Expires',
   'keys.group': 'Group',
+  'keys.importToCcSwitch': 'Import to CCS',
   'keys.id': 'ID',
   'keys.currentConcurrency': 'Current Concurrency',
   'keys.lastUsedAt': 'Last Used',
@@ -170,6 +171,7 @@ const DataTableStub = {
           <slot name="cell-id" :value="row.id" :row="row" />
         </div>
         <slot name="cell-name" :value="row.name" :row="row" />
+        <slot name="cell-actions" :row="row" />
         <div data-test="current-concurrency">
           <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
         </div>
@@ -437,5 +439,53 @@ describe('user KeysView column settings', () => {
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
+  })
+
+  it('opens a complete Codex CCS payload from the import action', async () => {
+    listKeys.mockResolvedValueOnce({
+      items: [
+        {
+          ...createApiKey(),
+          group_id: 42,
+          group: { name: 'OpenAI', platform: 'openai' } as ApiKey['group'],
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    getPublicSettings.mockResolvedValueOnce({
+      api_base_url: 'https://api.example.com',
+      site_name: 'Sub2API',
+    })
+    const openWindow = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const wrapper = await mountView()
+
+    await getButtonByText(wrapper, 'Import to CCS').trigger('click')
+
+    expect(openWindow).toHaveBeenCalledTimes(1)
+    expect(openWindow.mock.calls[0][1]).toBe('_self')
+    const deeplink = String(openWindow.mock.calls[0][0])
+    const params = new URLSearchParams(deeplink.split('?')[1] || '')
+    expect(params.get('resource')).toBe('provider')
+    expect(params.get('app')).toBe('codex')
+    expect(params.get('configFormat')).toBe('json')
+
+    const codexPayload = JSON.parse(atob(params.get('config') || ''))
+    expect(codexPayload.auth).toEqual({ OPENAI_API_KEY: 'sk-test-key' })
+    expect(codexPayload.config).toBe(`model_provider = "custom"
+
+[model_providers.custom]
+name = "OpenAI"
+base_url = "https://api.example.com"
+wire_api = "responses"
+requires_openai_auth = false
+experimental_bearer_token = "sk-test-key"
+
+[model_providers.custom.http_headers]
+x-openai-actor-authorization = "sub2api"`)
+
+    openWindow.mockRestore()
   })
 })
