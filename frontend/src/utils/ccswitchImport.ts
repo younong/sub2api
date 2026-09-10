@@ -1,5 +1,6 @@
 import type { GroupPlatform } from '@/types'
 
+export const OPENAI_CC_SWITCH_CODEX_MODEL = 'gpt-5.6-sol'
 export const GROK_CC_SWITCH_MODEL = 'grok-4.5'
 
 export type CcSwitchClientType = 'claude' | 'gemini'
@@ -38,7 +39,8 @@ export function resolveCcSwitchImportConfig(
     case 'openai':
       return {
         app: 'codex',
-        endpoint: baseUrl
+        endpoint: baseUrl,
+        model: OPENAI_CC_SWITCH_CODEX_MODEL
       }
     case 'gemini':
       return {

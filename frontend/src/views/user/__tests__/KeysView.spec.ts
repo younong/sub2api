@@ -470,7 +470,7 @@ describe('user KeysView column settings', () => {
     const params = new URLSearchParams(deeplink.split('?')[1] || '')
     expect(params.get('resource')).toBe('provider')
     expect(params.get('app')).toBe('codex')
-    expect(params.has('model')).toBe(false)
+    expect(params.get('model')).toBe('gpt-5.6-sol')
     expect(params.get('configFormat')).toBe('json')
 
     const codexPayload = JSON.parse(atob(params.get('config') || ''))
