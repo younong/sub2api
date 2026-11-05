@@ -1963,6 +1963,33 @@ func TestBuildOpenAIImagesResponsesRequest_PassesThroughNForMultiImageModels(t *
 	require.Equal(t, "draw a cat", gjson.GetBytes(body, "input.0.content.0.text").String())
 }
 
+func TestBuildOpenAIImagesResponsesRequest_OmitsReasoningEffort(t *testing.T) {
+	for _, model := range []string{"gpt-image-2", "gpt-image-1.5"} {
+		for _, endpoint := range []string{openAIImagesGenerationsEndpoint, openAIImagesEditsEndpoint} {
+			for _, quality := range []string{"", "auto", "high", "medium"} {
+				t.Run(model+"/"+endpoint+"/"+quality, func(t *testing.T) {
+					parsed := &OpenAIImagesRequest{
+						Endpoint: endpoint,
+						Model:    model,
+						Prompt:   "draw a cat",
+						Quality:  quality,
+					}
+					if parsed.IsEdits() {
+						parsed.InputImageURLs = []string{"data:image/png;base64,aGVsbG8="}
+					}
+					body, err := buildOpenAIImagesResponsesRequest(parsed, model)
+					require.NoError(t, err)
+					require.False(t, gjson.GetBytes(body, "reasoning.effort").Exists())
+					require.Equal(t, openAIImagesResponsesMainModel, gjson.GetBytes(body, "model").String())
+					require.Equal(t, model, gjson.GetBytes(body, "tools.0.model").String())
+					require.Equal(t, quality, gjson.GetBytes(body, "tools.0.quality").String())
+					require.Equal(t, quality != "", gjson.GetBytes(body, "tools.0.quality").Exists())
+				})
+			}
+		}
+	}
+}
+
 func TestBuildOpenAIImagesResponsesRequest_ForcesImageToolChoice(t *testing.T) {
 	parsed := &OpenAIImagesRequest{
 		Endpoint: openAIImagesGenerationsEndpoint,
